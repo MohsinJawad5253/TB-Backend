@@ -1,0 +1,63 @@
+# Teammate distribution file — no source code and no Docker build required.
+#
+# Usage:
+#   1. Copy this file and .env to the same empty directory.
+#   2. docker login              # required only for private Docker Hub images
+#   3. docker compose -f docker-compose.team.yml up -d
+#
+# Required .env keys are documented in .env.team.example. Do not commit or
+# distribute a production .env through public channels.
+
+services:
+  flask-ai:
+    image: mohsinjawadwala/purecure-flask-ai:1.0.0
+    platform: linux/arm64
+    pull_policy: always
+    container_name: purecure-flask-ai
+    environment:
+      FLASK_SERVICE_TOKEN: ${FLASK_SERVICE_TOKEN:?FLASK_SERVICE_TOKEN is required}
+    networks:
+      - purecure-internal
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 1G
+
+  node-api:
+    image: mohsinjawadwala/purecure-node-api:latest
+    platform: linux/arm64
+    pull_policy: always
+    container_name: purecure-node-api
+    ports:
+      - "${PORT:-5005}:3000"
+    # This is the only file teammates need besides this Compose file.
+    env_file:
+      - ./.env
+    environment:
+      PORT: 3000
+      FLASK_SERVICE_URL: http://flask-ai:5001
+      FLASK_SERVICE_TOKEN: ${FLASK_SERVICE_TOKEN:?FLASK_SERVICE_TOKEN is required}
+      PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
+    depends_on:
+      flask-ai:
+        condition: service_healthy
+    networks:
+      - purecure-internal
+      - purecure-external
+    restart: unless-stopped
+
+networks:
+  purecure-internal:
+    driver: bridge
+    internal: true
+  purecure-external:
+    driver: bridge
